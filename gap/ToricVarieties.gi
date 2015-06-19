@@ -558,7 +558,7 @@ InstallMethod( CoxRing,
     raylist := RayGenerators( FanOfVariety( variety ) );
     
     indeterminates := List( [ 1 .. Length( raylist ) ], i -> JoinStringsWithSeparator( [ variable, i ], "_" ) );
-    
+
     indeterminates := JoinStringsWithSeparator( indeterminates, "," );
     
     ring := GradedRing( DefaultGradedFieldForToricVarieties() * indeterminates );
