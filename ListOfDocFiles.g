@@ -19,4 +19,6 @@ list := [
          "../examples/examplesmanual/Hirzebruch5.g",
          "../examples/examplesmanual/Morphism.g",
          "../examples/examplesmanual/Divisors.g",
+         "../gap/Cohomology.gd",
+         "../gap/Cohomology.gi",
          ];
