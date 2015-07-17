@@ -1,0 +1,12 @@
+integer number_extreme_rays = 4
+integer embedding_dim = 3
+integer rank = 3
+integer index = 1
+integer number_support_hyperplanes = 4
+integer size_triangulation = 0
+integer sum_dets = 0
+boolean inhomogeneous = false
+boolean graded = true
+integer degree_1_elements = 4
+vector 3 grading = 0 0 1 
+integer grading_denom = 1
