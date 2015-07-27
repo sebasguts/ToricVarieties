@@ -265,17 +265,6 @@ InstallMethod( ClassOfDivisor,
                
   function( divisor )
 
-    # here is my problem
-    # use the new method "DivisorOfGivenClass" to construct a divisor and then ask "Class of Divisor" for that divisor
-    # -> then this very method will return "Error, cannot apply morphism to element, element is not contained in source of morphism"  
-    # from the second command line below
-
-   # new problem
-   # with my proposed method below I reduce the (class)degrees of the Cox-ring variables to their essential piece, i.e. for CP1 the 
-   # degrees of the x_i are just 1 but with Sebastians method they are given by (0,1) and (0,1)
-   # this seems to cause an error when computing "MonomsOfCoxRingOfDegree...
-   # so old method again
-
     local groupelem, coker;
     
     coker := CokernelEpi( MapFromCharacterToPrincipalDivisor( AmbientToricVariety( divisor ) ) );
@@ -284,28 +273,6 @@ InstallMethod( ClassOfDivisor,
     
     return groupelem;
 
-    # so I propose the following method which (hopefully) overcomes this shortage
-
-    #local variety, pM, list, class;
-
-    # find the ambient toric variety of this divisor
-    #variety := AmbientToricVariety( divisor );  
-  
-    # construct epi matrix
-    #pM := MatrixOfMap( ByASmallerPresentation( CokernelEpi( MapFromCharacterToPrincipalDivisor( variety ) ) ) );
-
-    # obtain list corresponding to the underlying group element of the divisor
-    #list := UnderlyingListOfRingElements( UnderlyingGroupElement( divisor ) );    
-
-    # and turn this list into a matrix
-    #list := HomalgMatrix( [list], 1 , Length( list ), HOMALG_MATRICES.ZZ );
-
-    # degree is now obtained by multiplying these matrices, i.e. computing the image of list under pM
-    #class := list * pM;
-
-    # finally turn this degree into a homalgElement and return it
-    #return HomalgElement( HomalgMap( class, NrRows( class ) * HOMALG_MATRICES.ZZ, NrColumns( class ) * HOMALG_MATRICES.ZZ ) );
-    
 end );
 
 ##

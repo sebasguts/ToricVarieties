@@ -1,8 +1,127 @@
+#############################################################################
+##
+##  Cohomology.gd     ToricVarieties       Martin Bies
+##
+##  Copyright 2011 Lehrstuhl B für Mathematik, RWTH Aachen
+##
+##  cohomology and multitruncations
+##
+#############################################################################
+
+#################################
+##
+## Representations
+##
+#################################
+
+# ??????????
+# what is that useful for?
+# ??????????
+
+
+#DeclareRepresentation( "IsToricDivisorRep",
+#                       IsToricDivisor and IsAttributeStoringRep,
+#                       [ AmbientToricVariety, UnderlyingGroupElement ]
+#                      );
+
+#BindGlobal( "TheFamilyOfToricDivisors",
+#        NewFamily( "TheFamilyOfToricDivisors" , IsToricDivisor ) );
+
+#BindGlobal( "TheTypeToricDivisor",
+#        NewType( TheFamilyOfToricDivisors,
+#                 IsToricDivisorRep ) );
+
+
+
 #################################
 ##
 ## Attributes
 ##
 #################################
+
+
+# compute the cone C = K^sat = K as introduced by Greg Smith in Oberwolfach
+# this requires that the variety be complete, smooth and projective
+# -> why can I not have this as a filter? So far, this leads to a "no method found" error...
+InstallMethod( GSCone,
+                " for toric varieties.",
+                #[ IsToricVariety and IsSmooth and IsComplete ],
+                [ IsToricVariety ],
+function( variety )
+
+#local B, i, j, k, M, monoms, help, deg, cones, conesHConstraints, file, otf, itf, gens, N, l, r;
+local deg, rayList, conesVList, help, i, j, conesHList, file, otf, itf, gens, N, l, r;
+
+if not IsSmooth( variety ) then
+
+   Error( "Variety must be smooth for this method to work." );
+
+elif not IsComplete( variety ) then
+
+   Error( "Variety must be complete for this method to work." );
+
+elif not IsProjective( variety ) then
+
+   Error( "Variety must be projective for this method to work." );
+
+fi;
+
+# obtain degrees of the generators of the Coxring
+deg := WeightsOfIndeterminates( CoxRing( variety ) );
+deg := List( [1..Length(deg)], x -> UnderlyingListOfRingElements( deg[x] ) );
+
+# figure out which rays contribute to the maximal cones in the fan
+rayList := RaysInMaximalCones( FanOfVariety( variety ) );
+
+# use raylist to produce list of cones to be intersected - each cone is V-presented first
+conesVList := [];
+for i in [1..Length(rayList)] do
+    help := [];
+    for j in [1..Length(rayList[i])] do
+        if rayList[i][j] = 0 then
+           # the generator j in deg should be added to help
+           Add( help, deg[j] );
+        fi;
+    od;
+    Add( conesVList, help );
+od;
+
+# remove duplicates in coneVList
+conesVList := DuplicateFreeList( conesVList );
+
+# compute the H-presentation for the cones given by the V-presentation in the above list
+# to this end we use the NormalizInterface
+conesHList := [];
+for i in [1..Length(conesVList)] do
+    Append( conesHList, NmzSupportHyperplanes( NmzCone([ "integral_closure", conesVList[i]]) ) );
+od;
+
+# remove duplicates
+conesHList := DuplicateFreeList( conesHList );
+
+# and return the list of constraints
+return conesHList;
+
+end);
+
+
+#################################
+##
+## Methods to extract the thus-far computed DegreeXParts of a toric variety
+##
+#################################
+
+
+# return the degree X Parts of a toric variety
+InstallMethod( DegreeXParts,
+               " for toric varieties",
+               [ IsToricVariety ],
+               
+function( variety )
+    
+    return variety!.DegreeXParts;
+    
+end );
 
 
 #################################
@@ -12,194 +131,100 @@
 #################################
 
 
-# this reads a file of integers into a list of lists of integers supported in homalg
-# every sublist corresponds to one line of the file
-InstallMethod( ReadIntegerListsFromFile,
-               " for existing files of integers ",
-               [ IsDirectory, IsString ],
-function( directory, name )
-
-local l,f,i,a,r;
-
-f:=InputTextFile( Filename( directory, name ) );
-a:=[];
-while not IsEndOfStream(f) do
-   l:=ReadLine(f);
-   if l<>fail then
-     l:=Chomp(l); # remove trailing CR/LF
-     r:=[];
-     for i in SplitString(l," ,") do # separate by SPACE or ,
-       if Length(i)>0 then
-         Add(r,Int(i));
-       fi;
-     od;
-     Add(a,r);
-   fi;
- od;
- CloseStream(f);    # <== New line
-return a;
-
-end );
-
-
-# This here is part of the interface to normaliz (faster computation than with polymake)
-# It computes the exponents of the monoms in the degree part of the cox ring and saves them to a separate file
-# Once the exponents are computed once, we read the content of the respective file to avoid the computation
-# Unfortunately that saves about no time so far... :(
-
-# The Normaliz folder is located right below the ToricVarieties folder, its path is hard coded - so this folder cannot be moved
-
+# This method uses the NormalizInterface to compute the exponents of the degree 'degree' monoms in the Coxring of a smooth and compact toric variety 'variety'
 InstallMethod( Exponents,
                "for a toric variety and a list describing a degree",
                [ IsToricVariety, IsList ],
 function( variety, degree )
 
-local s, d, file, rays, divisor, otf, otf2, R, A, i, j, n, myList, myList2, exponents;
+local divisor, A, rays, input, i, help, grading, C, myList, myList2, exponents, n, p, l;
 
-# check if the variety has a name
-if not HasNameOfVariety( variety ) then
+   if not IsComplete( variety ) then
 
-   Error( "Variety needs to have a name, so the computed output can be saved!" );
+      Error( "Variety is assumed complete." );
 
-fi;
+   elif not IsSmooth( variety ) then
 
-# get the directory in which Normaliz can be found
-# this is where we want to store the .exp files/ read from these files
-# need a more proper treatment, maybe set the package path on startup
-d := Concatenation( PackageInfo( "ToricVarieties")[1].InstallationPath, "/Normaliz/" );
+      Error( "Variety is assumed smooth." );
 
-# create the name of the file
-s := Concatenation( NameOfVariety( variety ) , String( degree ) );
-RemoveCharacters( s, " " );
-file := Filename( Directory( d ), Concatenation( s, ".in" ) );
+   fi;   
 
-# check if the file already exists - if it does no computation is needed, otherwise perform the computation just once
-# and save the result for future use
-myList2 := [];
-if not IsExistingFile( file ) then
-
-   # unfortunately the file does not yet exist, so we need to create it and apply normaliz to it
-
-   # write the polytope to a file Test.in
+   # construct divisor of given class
    divisor := DivisorOfGivenClass( variety, degree );
-
-   # extract the "coordinate" of this divisor in the Weil group
    A := UnderlyingListOfRingElements( UnderlyingGroupElement( divisor ) );
-   # IS THIS ALWAYS CORRELATED WITH THE ORDER IN WHICH THE RAY GENERATORS ARE LISTED IN R BELOW
 
-   # and the ray generators
-   R := RayGenerators( FanOfVariety( variety ) );
+   # compute the ray generators
+   rays := RayGenerators( FanOfVariety( variety ) );
+   n := Length( rays );
 
-   # write input file for normaliz
-   otf := OutputTextFile( file, false );
-   SetPrintFormattingStatus( otf, false );
-   AppendTo( otf, Length( R ) );
-   AppendTo( otf, "\n" );
-   AppendTo( otf, Length( R[1] ) + 1 );
-   AppendTo( otf, "\n" );
-   for i in [1..Length( R ) ] do
-	for j in [1..Length( R[i] )] do
-		AppendTo( otf, R[i][j] );
-		AppendTo( otf, " " );
-	od;
-	AppendTo( otf, A[i] );
-	AppendTo( otf, "\n" );
+   # now produce input, which we can pass to the NormalizInterface to encode this polytope
+   input := [];
+   for i in [1.. Length(rays) ] do
+              help := ShallowCopy( rays[i] );
+              Add( help, A[i] );
+              Add( input, help );
    od;
-   AppendTo( otf, "inequalities \n" );
-   AppendTo( otf, "1 \n" );
-   AppendTo( otf, Length( R[1] ) + 1 );
-   AppendTo( otf, "\n" );
-   for i in [1..Length( R[1] ) ] do
-	AppendTo( otf, "0 ");
-   od;
-   AppendTo( otf, "1 \n" );
-   AppendTo( otf, "grading" );
-   CloseStream( otf );
 
-   # and let normaliz operate on this file
-   Exec( Concatenation( d, "normaliz -1 -a ", d, s ) );
+   # introduce polytope to Normaliz
+   p := NmzCone( ["inhom_inequalities", input] );
 
-   # suppose normaliz can't operate on the above input file, then the polytope probably contains no lattice points at all
-   # unfortunately, instead of returning "nothing" it raises an error
-   # so we need to check if such a situation occured, and if it did we just use the slower version "LatticePoints" that uses
-   # the polymake interface - for no lattice points to be returned I hope however that it will still be fast enough
+   # and compute its vertices
+   l := NmzVerticesOfPolyhedron( p ); 
 
-   # this is the output file that normaliz should have produced
-   file := Filename( Directory( d ), Concatenation( s, ".ht1" ) );
+   # now distinguish cases
+   if l = [] then
 
-   # check if this file exists
-   if IsExistingFile( file ) then
-      
-      # normaliz did operate sucessfully, so just read from its output file
-      myList := ReadIntegerListsFromFile( Directory( d ), Concatenation( s, ".ht1" ) );
+      # => the polytope is empty, so
+      myList2 := [];
 
-      # and slightly manipulate it by first removing the first two lists...
-      Remove( myList, 1 );
-      Remove( myList, 1 );
+   else 
 
-      # ...and then remove from all other lists the very last entry, which is redundant output from Normaliz
-      for i in [1..Length( myList )] do
-          Remove( myList[i], Length( myList[i] ) );
+      # => the polytope is not empty so distinguish again
+
+      if Length( l ) = 1 then
+
+          # there is only one vertex in the polytope, i.e. this vertex is the single lattice point in the polytope
+          # thus we have (after removing the last entry <-> redundant output)
+          myList := l;
+          Remove( myList[1], Length( myList[1] ) );
+
+      else 
+ 
+          # there are at least 2 vertices and thus at least 2 lattice points to this polytope
+          # hence we need to compute them properly by Normaliz
+          # this is why we need to introduce a grading
+          grading := List( [1..Length( rays[1] )], n -> 0 );
+          Add( grading, 1 );
+
+          # which we use to construct the corresponding cone in Normaliz...
+          C := NmzCone(["inequalities",input,"grading",[grading]]);
+
+          # ...and then compute its lattice points
+          myList := NmzDeg1Elements( C );
+
+          # finally drop from all elements in myList the last element <-> redundant output from Normaliz
+          for i in [1..Length( myList )] do
+              Remove( myList[i], Length( myList[i] ) );
+          od;
+
+      fi;
+
+      # now turn myList into the exponents that we are looking for
+      myList2 := [];
+      for i in myList do
+           exponents := List( [1..n], j -> A[j] + Sum( List( [1..Length(i)], m -> rays[j][m] * i[m]) ) );
+           Add( myList2, exponents );
       od;
-
-   else
-
-      # normaliz failed and thus gave us lovely output
-      # anyways, we now use our slow fallback method
-      myList := LatticePoints( PolytopeOfDivisor( DivisorOfGivenClass( variety, degree ) ) );
 
    fi;
 
-   # now the content of myList is suitable for use within homalg
-   # we use it to compute the exponents of the monomials and save those exponents in the corresponding .exp file for simple handeling
-   
-   # collect the necessary information
-   rays := RayGenerators( FanOfVariety( variety ) );
-   divisor := UnderlyingListOfRingElements( UnderlyingGroupElement( DivisorOfGivenClass( variety, degree ) ) );    
-   n := Length( rays );
-   
-   # compute the exponents
-   myList2 := [];
-   for i in myList do
-
-       exponents := List( [1..n], j -> divisor[j] + Sum( List( [1..Length(i)], m -> rays[j][m] * i[m]) ) );
-
-       Add( myList2, exponents );
-
-   od;
-   
-   # now write myList2 to the .exp file so that we can easily read this file with gap
-   file := Filename( Directory( d ), Concatenation( s, ".exp" ) );
-
-   # start the writing process
-   otf2 := OutputTextFile( file, false );
-   SetPrintFormattingStatus( otf2, false );
-   for i in myList2 do
-       for j in i do
-           AppendTo( otf2, String( j ) );
-           AppendTo( otf2, " " );
-       od;
-       AppendTo( otf2, "\n" );
-   od;
-
-   # close the stream
-   CloseStream( otf2 );
-   
-else
-
-   # the computation has been done before
-   # so just read from the produced output file
-   myList2 := ReadIntegerListsFromFile( Directory( d ), Concatenation( s, ".exp" ) );
-
-fi;
-
-# and return the exponents
-return myList2;
+   # and return the result
+   return myList2;
 
 end );
 
 
-# this method computes the Laurent monomials of the lattice points and thereby returns the monoms of given degree within the Coxring
+# this method computes the Laurent monomials of the lattice points and thereby identifies the monoms of given degree in the Coxring
 InstallMethod( MonomsOfCoxRingOfDegreeByNormaliz,
                "for a smooth and compact toric variety and a list describing a degree in its class group",
                [ IsToricVariety, IsList ],
@@ -209,43 +234,59 @@ function( variety, degree )
     
     if not IsComplete( variety ) then
 
-       Error( "Method only applicable to compact varieties" );
+       Error( "Variety is assumed complete." );
 
     elif not IsSmooth( variety) then
    
-       Error( "Method only applicable to smooth varieties" );
+       Error( "Variety is assumed smooth." );
 
     elif not HasCoxRing( variety ) then
-        
-        Error( "specify cox ring first\n" );
+
+        # Cox ring not specified, so set it up
+        CoxRing( variety );;
 
     elif not Length( degree ) = Rank( ClassGroup( variety ) ) then
 
-        Error( "Length of degree does not match the rank of the class group" );
+        Error( "Length of degree does not match the rank of the class group." );
         
     fi;
+
+    # check if this has been computed before...
+    if not IsBound( variety!.DegreeXParts.(String(degree)) ) then
+
+       # unfortunately this degree layer has not yet been computed, so we need to do it now          
+
+       # collect the necessary information
+       cox_ring := CoxRing( variety );
+       ring := ListOfVariablesOfCoxRing( variety );
+       exponents := Exponents( variety, degree );
     
-    # collect the necessary information
-    cox_ring := CoxRing( variety );
-    ring := ListOfVariablesOfCoxRing( variety );
-    exponents := Exponents( variety, degree );
+       # initialise the list of monoms
+       mons := [ ];
     
-    # initialise the list of monoms
-    mons := [ ];
-    
-    # turn the lattice points into monoms of the cox_ring
-    for i in exponents do
+       # turn the lattice points into monoms of the cox_ring
+       for i in exponents do
         
-        mon := List( [ 1 .. Length( ring ) ], j -> JoinStringsWithSeparator( [ ring[ j ], String( i[j] ) ], "^" ) );
-        mon := JoinStringsWithSeparator( mon, "*" );
+           mon := List( [ 1 .. Length( ring ) ], j -> JoinStringsWithSeparator( [ ring[ j ], String( i[j] ) ], "^" ) );
+           mon := JoinStringsWithSeparator( mon, "*" );
         
-        Add( mons, HomalgRingElement( mon, cox_ring ) );
+           Add( mons, HomalgRingElement( mon, cox_ring ) );
         
-    od;
+       od;
+  
+       # add the result to DegreeXParts for future reference
+       variety!.DegreeXParts.(String(degree)) := mons;
+
+   else 
+ 
+       # the result is known already
+       mons := variety!.DegreeXParts.(String(degree));
     
-    # and return this result
-    return mons;
-    
+   fi;
+
+   # now return the result
+   return mons;
+
 end );
 
 
@@ -262,15 +303,20 @@ if not Length( degree ) = Rank( ClassGroup( variety ) ) then
 
 elif not HasCoxRing( variety ) then
 
-   Error( "Specify Coxring first!" );
+   # Coxring not specified, so set it up
+   CoxRing( variety );;
 
-elif not HasNameOfVariety( variety ) then
+elif not IsComplete( variety ) then
 
-   Error( "The variety needs a name, so the produced output can be saved." );
+   Error( "Variety is assumed complete." );
+
+elif not IsSmooth( variety ) then
+
+   Error( "Variety is assumed smooth." );
 
 fi;
 
-# return the output
+# return the result
 return MonomsOfCoxRingOfDegreeByNormaliz( variety, degree );
 
 end );
@@ -306,6 +352,14 @@ if not Length( charges ) = Rank( ClassGroup( variety ) ) then
 elif not HasCoxRing( variety ) then
 
    Error( "Specify Coxring first!" );
+
+elif not IsSmooth( variety ) then
+
+   Error( "The variety must be smooth." );
+
+elif not IsComplete( variety ) then
+
+   Error( "The variety must be complete." );
 
 else
 
@@ -616,9 +670,6 @@ local h, M1, M2, gens1, gens2, rows, matrix, map, Q;
 	       # no degenerate case, so do the full computation
 
 	       # compute the images of gens1 in the range of h expressed in terms of gens2 (that is what I use gens2 as matrix for)
-               # this needs "applyMorphismToElement"
-               # try to find work around
-               #rows := List([1..Length(gens1)], x -> RightDivide( MatrixOfMap( UnderlyingMorphism( MyApplyMorphismToElement( h, gens1[x] ) ) ), gens2 ) );
                rows := List([1..Length(gens1)], x -> RightDivide( gens1[x] * MatrixOfMap( h ), gens2 ) );
 
                #-> rows=list of matrices s.t. each of these matrices is a row of the rep. matrix of the degreeXpart of the morphism h
@@ -707,139 +758,6 @@ end);
 ## Methods to apply theorem by G. Smith
 ##
 #######################################
-
-
-
-InstallMethod( VToH, 
-               " for list of lists of integers.",
-               [ IsList ],
-function( ListOfVertices )
-
-local d, file, otf, itf, i, j, output, N, l, r;
-
-# extract the normaliz directory
-d := Concatenation( PackageInfo( "ToricVarieties")[1].InstallationPath, "/Normaliz/" );
-
-# fix filename
-file := Filename( Directory( d ), "VToH.in" );
-
-# write input file for normaliz (overwrite existing file)
-otf := OutputTextFile( file, false );
-SetPrintFormattingStatus( otf, false );
-
-# write information about how many vertices of which length will be written
-AppendTo( otf, Length( ListOfVertices ) );
-AppendTo( otf, "\n" );
-AppendTo( otf, Length( ListOfVertices[1] ) );
-AppendTo( otf, "\n" );
-
-# now write the vertices to the input file
-for i in [1..Length( ListOfVertices ) ] do
-    for j in [1..Length( ListOfVertices[i] )] do
-	AppendTo( otf, ListOfVertices[i][j] );
-	AppendTo( otf, " " );
-    od;
-    AppendTo( otf, "\n" );
-od;
-
-AppendTo( otf, "integral_closure \n" );
-CloseStream( otf );
-
-# finally let normaliz operate on this input file
-Exec( Concatenation( d, "normaliz -s -a ", d, "VToH" ) );
-#Exec( "/home/martin/WorkWithGAP/MyMethods/Normaliz/normaliz -s -a /home/martin/WorkWithGAP/MyMethods/Normaliz/VToH" );
-
-# in the file .cst the constraints defining the cone are written, so we can read the contraints from there
-file := Filename( Directory( d ), "VToH.cst" );
-itf := InputTextFile( file );
-N := Int( Chomp( ReadLine( itf ) ) );
-ReadLine( itf );
-output:=[];
-for j in [1..N] do
-
-   # read a line
-   l := ReadLine( itf );
-
-   # and turn it into a list of integers
-   if l<>fail then
-      l:=Chomp(l); # remove trailing CR/LF
-      r:=[];
-      for i in SplitString(l," ,") do # separate by SPACE or ,
-          if Length(i)>0 then
-             Add(r,Int(i));
-          fi;
-      od;
-      Add(output,r);
-   fi;
-
-od;
-CloseStream( itf );
-
-# return the constraints
-return output;
-
-end );
-
-
-# compute the cone C = K^sat = K mentioned in Greg Smith
-# this requires that the variety be complete, smooth and projective
-InstallMethod( GSCone,
-                " for toric varieties.",
-                [ IsToricVariety ],
-function( variety )
-
-#local B, i, j, k, M, monoms, help, deg, cones, conesHConstraints, file, otf, itf, gens, N, l, r;
-local deg, rayList, conesVList, help, i, j, conesHList, file, otf, itf, gens, N, l, r;
-
-if not IsSmooth( variety ) then
-
-   Error( "Variety must be smooth for this method to work." );
-
-elif not IsComplete( variety ) then
-
-   Error( "Variety must be complete for this method to work." );
-
-elif not IsProjective( variety ) then
-
-   Error( "Variety must be projective for this method to work." );
-
-fi;
-
-# obtain degrees of the generators of the Coxring
-deg := WeightsOfIndeterminates( CoxRing( variety ) );
-deg := List( [1..Length(deg)], x -> UnderlyingListOfRingElements( deg[x] ) );
-
-# figure out which rays contribute to the maximal cones in the fan
-rayList := RaysInMaximalCones( FanOfVariety( variety ) );
-
-# use raylist to produce list of cones to be intersected - each cone is V-presented first
-conesVList := [];
-for i in [1..Length(rayList)] do
-    help := [];
-    for j in [1..Length(rayList[i])] do
-        if rayList[i][j] = 0 then
-           # the generator j in deg should be added to help
-           Add( help, deg[j] );
-        fi;
-    od;
-    Add( conesVList, help );
-od;
-
-# remove duplicates in coneVList
-conesVList := DuplicateFreeList( conesVList );
-
-# compute the H-presentation for the cones given by the V-presentation in the above list
-conesHList := [];
-for i in [1..Length(conesVList)] do
-
-    Append( conesHList, VToH( conesVList[i] ) );
-
-od;
-
-# return the list of hyperplane constraints
-return conesHList;
-
-end);
 
 
 # extract the weights a_ij for a f.p. Z^n-graded S-module
@@ -996,7 +914,7 @@ B := IrrelevantIdeal( variety );
 BPower := GradedLeftSubmodule( List( EntriesOfHomalgMatrix( MatrixOfSubobjectGenerators( B ) ), x -> x^(e) ) );	
 
 # compute the GradedHom
-GH := GradedHom( BPower, module );
+GH := ByASmallerPresentation( GradedHom( BPower, module ) );
 
 # truncate the degree 0 part
 zero := List( [1..Rank( ClassGroup( variety ) )], x -> 0 );

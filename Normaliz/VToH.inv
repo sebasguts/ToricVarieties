@@ -1,9 +1,0 @@
-integer number_extreme_rays = 2
-integer embedding_dim = 2
-integer rank = 2
-integer index = 1
-integer number_support_hyperplanes = 2
-boolean inhomogeneous = false
-boolean graded = true
-vector 2 grading = 1 1 
-integer grading_denom = 1
